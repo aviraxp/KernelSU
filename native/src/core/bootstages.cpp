@@ -180,6 +180,7 @@ bool MagiskD::post_fs_data() const noexcept {
     setup_mounts();
     handle_modules();
     load_modules();
+    exec_module_scripts("post-mount");
     return false;
 }
 

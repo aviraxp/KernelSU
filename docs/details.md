@@ -89,6 +89,10 @@ DATABIN=$SECURE_DIR/magisk
 
 This triggers on `post-fs-data` when `/data` is decrypted and mounted. The daemon `magiskd` will be launched, post-fs-data scripts are executed, and module files are magic mounted.
 
+### post-mount
+
+This triggers on `post-mount` when magic mount completes. In this mode, post-mount scripts are executed.
+
 ### late_start
 
 Later in the booting process, the class `late_start` will be triggered, and Magisk "service" mode will be started. In this mode, service scripts are executed.
