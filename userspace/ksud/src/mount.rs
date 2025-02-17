@@ -75,6 +75,7 @@ pub fn mount_ext4(source: impl AsRef<Path>, target: impl AsRef<Path>) -> Result<
         target.as_ref(),
         MoveMountFlags::MOVE_MOUNT_F_EMPTY_PATH,
     )?;
+    mount_change(target.as_ref(), MountChangeFlags::PRIVATE).context("make loop device private")?;
     Ok(())
 }
 
@@ -166,6 +167,7 @@ pub fn mount_tmpfs(dest: impl AsRef<Path>) -> Result<()> {
         dest.as_ref(),
         MoveMountFlags::MOVE_MOUNT_F_EMPTY_PATH,
     )?;
+    mount_change(dest.as_ref(), MountChangeFlags::PRIVATE).context("make tmpfs private")?;
     Ok(())
 }
 
