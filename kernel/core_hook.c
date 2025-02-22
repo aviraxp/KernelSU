@@ -44,6 +44,7 @@
 #include "throne_tracker.h"
 #include "throne_tracker.h"
 #include "kernel_compat.h"
+#include "../../fs/mount.h" // mount and namespace struct definitions
 
 static bool ksu_module_mounted = false;
 
@@ -498,52 +499,93 @@ static bool is_appuid(kuid_t uid)
 	return appid >= FIRST_APPLICATION_UID && appid <= LAST_APPLICATION_UID;
 }
 
-static bool should_umount(struct path *path)
-{
-	if (!path) {
-		return false;
-	}
+// linked list to reversed umount
+struct ksu_mount_entry {
+	struct list_head list;
+	struct vfsmount *mnt;
+	struct dentry *mountpoint;
+};
 
-	if (current->nsproxy->mnt_ns == init_nsproxy.mnt_ns) {
-		pr_info("ignore global mnt namespace process: %d\n",
-			current_uid().val);
-		return false;
-	}
-
-	if (path->mnt && path->mnt->mnt_sb && path->mnt->mnt_sb->s_type) {
-		const char *fstype = path->mnt->mnt_sb->s_type->name;
-		return strcmp(fstype, "overlay") == 0;
-	}
-	return false;
-}
-
-static void ksu_umount_mnt(struct path *path, int flags)
+static void ksu_path_umount(struct path *path, int flags)
 {
 	int err = path_umount(path, flags);
 	if (err) {
-		pr_info("umount %s failed: %d\n", path->dentry->d_iname, err);
+		pr_err("umount %s failed: %d\n", path->dentry->d_iname, err);
+	} else {
+		pr_info("umounted %s successfully\n", path->dentry->d_iname);
 	}
 }
 
-static void try_umount(const char *mnt, bool check_mnt, int flags)
+static int collect_ksu_mounts(struct vfsmount *mnt, void *arg)
 {
-	struct path path;
-	int err = kern_path(mnt, 0, &path);
-	if (err) {
+	struct list_head *head = (struct list_head *)arg;
+	struct ksu_mount_entry *entry;
+	struct mount *mnt_real;
+	const char *devname;
+
+	if (!mnt)
+		return 0;
+
+	mnt_real = real_mount(mnt);
+	devname = mnt_real->mnt_devname;
+
+	// use devname to match mountpoints
+	if (devname && strcmp(devname, "KSU") == 0) {
+		entry = kmalloc(sizeof(struct ksu_mount_entry), GFP_KERNEL);
+		if (!entry) {
+			pr_err("failed to allocate memory for mount entry\n");
+			return -ENOMEM;
+		}
+		entry->mnt = mnt;
+		entry->mountpoint = mnt_real->mnt_mountpoint;
+		pr_info("mount details - devname: %s, root: %s, mountpoint: %s\n",
+			mnt_real->mnt_devname ? mnt_real->mnt_devname : "null",
+			mnt->mnt_root ? mnt->mnt_root->d_name.name : (const unsigned char *)"null",
+			mnt_real->mnt_mountpoint ? mnt_real->mnt_mountpoint->d_name.name : (const unsigned char *)"null");
+		list_add(&entry->list, head);
+	}
+
+	return 0;
+}
+
+static void ksu_umount(void)
+{
+	struct path root = {
+		.mnt = &current->nsproxy->mnt_ns->root->mnt,
+		.dentry = current->nsproxy->mnt_ns->root->mnt.mnt_root
+	};
+	struct vfsmount *collected;
+	struct ksu_mount_entry *entry, *tmp;
+	LIST_HEAD(ksu_mounts);
+
+	collected = collect_mounts(&root);
+	if (IS_ERR(collected)) {
+		pr_err("%s: collect mounts failed: %ld\n", __func__, PTR_ERR(collected));
 		return;
 	}
 
-	if (path.dentry != path.mnt->mnt_root) {
-		// it is not root mountpoint, maybe umounted by others already.
-		return;
+	iterate_mounts(collect_ksu_mounts, &ksu_mounts, collected);
+
+	drop_collected_mounts(collected);
+
+	// iterate the list in reversed order and umount
+	list_for_each_entry_safe_reverse(entry, tmp, &ksu_mounts, list) {
+		struct path path = {
+			.mnt = entry->mnt,
+			.dentry = entry->mountpoint
+		};
+		ksu_path_umount(&path, 0); //FIXME: why was it 0?
+		list_del(&entry->list);
+		kfree(entry);
 	}
 
-	// we are only interest in some specific mounts
-	if (check_mnt && !should_umount(&path)) {
-		return;
-	}
+	// module image must get umounted last
+	struct path image;
+	int err;
 
-	ksu_umount_mnt(&path, flags);
+	err = kern_path("/data/adb/modules", LOOKUP_FOLLOW, &image);
+	if (!err)
+		ksu_path_umount(&image, MNT_DETACH);
 }
 
 int ksu_handle_setuid(struct cred *new, const struct cred *old)
@@ -598,16 +640,7 @@ int ksu_handle_setuid(struct cred *new, const struct cred *old)
 		current->pid);
 #endif
 
-	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
-	// filter the mountpoint whose target is `/data/adb`
-	try_umount("/system", true, 0);
-	try_umount("/vendor", true, 0);
-	try_umount("/product", true, 0);
-	try_umount("/system_ext", true, 0);
-	try_umount("/data/adb/modules", false, MNT_DETACH);
-
-	// try umount ksu temp path
-	try_umount("/debug_ramdisk", false, MNT_DETACH);
+	ksu_umount();
 
 	return 0;
 }
