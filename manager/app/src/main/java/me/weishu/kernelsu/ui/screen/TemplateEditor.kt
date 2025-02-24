@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.lifecycle.Lifecycle
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.result.ResultBackNavigator
@@ -77,6 +78,7 @@ fun TemplateEditorScreen(
     }
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val navController = rememberNavController()
 
     BackHandler {
         navigator.navigateBack(result = !readOnly)
@@ -105,7 +107,13 @@ fun TemplateEditorScreen(
                 },
                 readOnly = readOnly,
                 summary = titleSummary,
-                onBack = { navigator.navigateBack(result = !readOnly) },
+                onBack = {
+                    navController.currentBackStackEntry?.let { entry ->
+                        if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                            navigator.navigateBack(result = !readOnly)
+                        }
+                    }
+                },
                 onDelete = {
                     if (deleteAppProfileTemplate(template.id)) {
                         navigator.navigateBack(result = true)

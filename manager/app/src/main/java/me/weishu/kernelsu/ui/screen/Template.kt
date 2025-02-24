@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -76,6 +77,7 @@ fun AppProfileTemplateScreen(
     val viewModel = viewModel<TemplateViewModel>()
     val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val navController = rememberNavController()
 
     LaunchedEffect(Unit) {
         if (viewModel.templateList.isEmpty()) {
@@ -100,7 +102,13 @@ fun AppProfileTemplateScreen(
                 }
             }
             TopBar(
-                onBack = { navigator.popBackStack() },
+                onBack = {
+                    navController.currentBackStackEntry?.let { entry ->
+                        if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                            navigator.popBackStack()
+                        }
+                    }
+                },
                 onSync = {
                     scope.launch { viewModel.fetchTemplates(true) }
                 },

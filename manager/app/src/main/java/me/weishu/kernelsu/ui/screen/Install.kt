@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import com.maxkeppeker.sheets.core.models.base.Header
 import com.maxkeppeker.sheets.core.models.base.rememberUseCaseState
 import com.maxkeppeler.sheets.list.ListDialog
@@ -76,6 +77,8 @@ import me.weishu.kernelsu.ui.util.rootAvailable
 @Destination<RootGraph>
 @Composable
 fun InstallScreen(navigator: DestinationsNavigator) {
+    val navController = rememberNavController()
+
     var installMethod by remember {
         mutableStateOf<InstallMethod?>(null)
     }
@@ -133,7 +136,13 @@ fun InstallScreen(navigator: DestinationsNavigator) {
     Scaffold(
         topBar = {
             TopBar(
-                onBack = { navigator.popBackStack() },
+                onBack = {
+                    navController.currentBackStackEntry?.let { entry ->
+                        if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                            navigator.popBackStack()
+                        }
+                    }
+                },
                 onLkmUpload = onLkmUpload,
                 scrollBehavior = scrollBehavior
             )
