@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use extattr::lgetxattr;
 use rustix::fs::{
     Gid, MetadataExt, Mode, MountFlags, MountPropagationFlags, Uid, UnmountFlags, bind_mount,
-    chmod, chown, mount, move_mount, unmount,
+    chmod, chown, mount, move_mount, remount, unmount,
 };
 use rustix::mount::mount_change;
 use rustix::path::Arg;
@@ -255,6 +255,7 @@ fn do_magic_mount<P: AsRef<Path>, WP: AsRef<Path>>(
                     work_dir_path.display()
                 );
                 bind_mount(module_path, target_path)?;
+                remount(target_path, MountFlags::RDONLY | MountFlags::BIND)?;
             } else {
                 bail!("cannot mount root file {}!", path.display());
             }
