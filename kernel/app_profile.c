@@ -6,6 +6,7 @@
 #include <linux/thread_info.h>
 #include <linux/uidgid.h>
 #include <linux/version.h>
+#include <linux/interrupt.h>
 
 #include "allowlist.h"
 #include "app_profile.h"
@@ -121,6 +122,11 @@ void escape_with_root_profile(void)
 
 	commit_creds(cred);
 
+   if (in_interrupt()) {
+	   pr_warn("1Warning: Using spinlock_irq in interrupt context is not safe!\n");
+   } else if (irqs_disabled()) {
+	   pr_info("1Locking spinlock_irq in a context with interrupts disabled\n");
+   } 
 	// Refer to kernel/seccomp.c: seccomp_set_mode_strict
 	// When disabling Seccomp, ensure that current->sighand->siglock is held during the operation.
 	spin_lock_irq(&current->sighand->siglock);
