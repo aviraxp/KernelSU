@@ -27,6 +27,7 @@
 #include <linux/uaccess.h>
 #include <linux/uidgid.h>
 #include <linux/version.h>
+#include <linux/interrupt.h>
 
 #include "allowlist.h"
 #include "setuid_hook.h"
@@ -111,6 +112,11 @@ int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
     if (ksu_get_manager_uid() == new_uid) {
         pr_info("install fd for manager: %d\n", new_uid);
         ksu_install_fd();
+       if (in_interrupt()) {
+           pr_warn("1Warning: Using spinlock_irq in interrupt context is not safe!\n");
+       } else if (irqs_disabled()) {
+           pr_info("1Locking spinlock_irq in a context with interrupts disabled\n");
+       } 
         spin_lock_irq(&current->sighand->siglock);
         ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
         ksu_set_task_tracepoint_flag(current);
